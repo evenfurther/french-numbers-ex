@@ -6,16 +6,16 @@ defmodule FrenchNumbers do
 
       iex> FrenchNumbers.to_french(71)
       "soixante-et-onze"
-      
+
       iex> FrenchNumbers.to_french(1001)
       "mille-un"
-      
+
       iex> FrenchNumbers.to_french(-200001)
       "moins deux-cent-mille-un"
-      
+
       iex> FrenchNumbers.to_french(37251061, feminine: true)
       "trente-sept-millions-deux-cent-cinquante-et-un-mille-soixante-et-une"
-      
+
       iex> FrenchNumbers.to_french(37251061, reformed: false)
       "trente-sept millions deux cent cinquante et un mille soixante et un"
   """
@@ -76,10 +76,10 @@ defmodule FrenchNumbers do
 
       iex> FrenchNumbers.to_french(17)
       "dix-sept"
-      
+
       iex> FrenchNumbers.to_french(1, feminine: true)
       "une"
-      
+
       iex> FrenchNumbers.to_french(21, reformed: false)
       "vingt et un"
   """
@@ -90,39 +90,59 @@ defmodule FrenchNumbers do
     }
 
     if n < 0 do
-      "moins " <> basic(-n, options, false)
+      "moins " <> convert(-n, options)
     else
-      basic(n, options, false)
+      convert(n, options)
     end
   end
 
-  defp literal_for(value, options) do
-    cond do
-      value == 1 and options.feminine -> "une"
-      value <= 20 -> Enum.at(@smalls, value)
-      value == 30 -> "trente"
-      value == 40 -> "quarante"
-      value == 50 -> "cinquante"
-      value == 60 -> "soixante"
-      value == 71 -> if options.reformed, do: "soixante-et-onze", else: "soixante et onze"
-      value == 80 -> "quatre-vingts"
-      value == 81 -> if options.feminine, do: "quatre-vingt-une", else: "quatre-vingt-un"
-      value == 100 -> "cent"
-      value == 1000 -> "mille"
-      true -> nil
+  # Convert a non-negative integer to French
+  defp convert(n, options) when n >= 0 do
+    case get_literal(n, options) do
+      nil -> convert_by_range(n, options)
+      literal -> literal
     end
   end
+
+  # Split conversion logic by number range
+  defp convert_by_range(n, options) do
+    cond do
+      n < 60 -> smaller_than_60(n, options)
+      n < 80 -> base_onto(60, n, options)
+      n < 100 -> base_onto(80, n, options)
+      n < 1000 -> smaller_than_1000(n, options)
+      n < 2000 -> smaller_than_2000(n, options)
+      n < 1_000_000 -> smaller_than_1000000(n, options)
+      true -> over_1000000(n, options)
+    end
+  end
+
+  # Get literal representation for specific values
+  defp get_literal(1, %{feminine: true}), do: "une"
+  defp get_literal(n, _options) when n <= 20, do: Enum.at(@smalls, n)
+  defp get_literal(30, _options), do: "trente"
+  defp get_literal(40, _options), do: "quarante"
+  defp get_literal(50, _options), do: "cinquante"
+  defp get_literal(60, _options), do: "soixante"
+  defp get_literal(71, %{reformed: true}), do: "soixante-et-onze"
+  defp get_literal(71, %{reformed: false}), do: "soixante et onze"
+  defp get_literal(80, _options), do: "quatre-vingts"
+  defp get_literal(81, %{feminine: true}), do: "quatre-vingt-une"
+  defp get_literal(81, %{feminine: false}), do: "quatre-vingt-un"
+  defp get_literal(100, _options), do: "cent"
+  defp get_literal(1000, _options), do: "mille"
+  defp get_literal(_value, _options), do: nil
 
   defp add_unit_for(str, prefix_count, log1000) do
     prefix_idx = div(log1000, 2)
 
-    if prefix_idx < length(@prefixes) do
-      prefix = Enum.at(@prefixes, prefix_idx)
+    with true <- prefix_idx < length(@prefixes),
+         prefix <- Enum.at(@prefixes, prefix_idx) do
       suffix = if rem(log1000, 2) == 0, do: "illion", else: "illiard"
       plural = if prefix_count > 1, do: "s", else: ""
       str <> prefix <> suffix <> plural
     else
-      nil
+      _ -> nil
     end
   end
 
@@ -134,63 +154,37 @@ defmodule FrenchNumbers do
     end
   end
 
+  defp complete(str, 0, _prefix_under_100, _options), do: str
+
+  defp complete(str, 1, prefix_under_100, options) do
+    str = unpluralize(str)
+    connector = get_connector(prefix_under_100, options.reformed)
+    suffix = if options.feminine, do: "e", else: ""
+    str <> connector <> suffix
+  end
+
   defp complete(str, n, prefix_under_100, options) do
-    if n > 0 do
-      str = unpluralize(str)
-
-      str =
-        if n == 1 do
-          connector =
-            cond do
-              prefix_under_100 and options.reformed -> "-et-un"
-              prefix_under_100 -> " et un"
-              options.reformed -> "-un"
-              true -> " un"
-            end
-
-          str <> connector <> if(options.feminine, do: "e", else: "")
-        else
-          separator =
-            if options.reformed or (prefix_under_100 and n < 100) do
-              "-"
-            else
-              " "
-            end
-
-          str <> separator <> basic(n, options, false)
-        end
-
-      str
-    else
-      str
-    end
+    str = unpluralize(str)
+    separator = get_separator(prefix_under_100, n, options.reformed)
+    str <> separator <> convert(n, options)
   end
 
-  defp basic(n, options, _negative) when n >= 0 do
-    case literal_for(n, options) do
-      nil ->
-        cond do
-          n < 60 -> smaller_than_60(n, options)
-          n < 80 -> base_onto(60, n, options)
-          n < 100 -> base_onto(80, n, options)
-          n < 1000 -> smaller_than_1000(n, options)
-          n < 2000 -> smaller_than_2000(n, options)
-          n < 1_000_000 -> smaller_than_1000000(n, options)
-          true -> over_1000000(n, options)
-        end
+  defp get_connector(true, true), do: "-et-un"
+  defp get_connector(true, false), do: " et un"
+  defp get_connector(false, true), do: "-un"
+  defp get_connector(false, false), do: " un"
 
-      literal ->
-        literal
-    end
-  end
+  defp get_separator(true, n, _reformed) when n < 100, do: "-"
+  defp get_separator(_prefix_under_100, _n, true), do: "-"
+  defp get_separator(_prefix_under_100, _n, false), do: " "
 
   defp smaller_than_60(n, options) do
     unit = rem(n, 10)
-    complete(basic(n - unit, %{options | feminine: false}, false), unit, true, options)
+    complete(convert(n - unit, %{options | feminine: false}), unit, true, options)
   end
 
   defp base_onto(b, n, options) do
-    complete(literal_for(b, options), n - b, true, options)
+    complete(get_literal(b, options), n - b, true, options)
   end
 
   defp smaller_than_1000(n, options) do
@@ -199,7 +193,7 @@ defmodule FrenchNumbers do
 
     result =
       if hundredths > 1 do
-        prefix = literal_for(hundredths, options)
+        prefix = get_literal(hundredths, options)
         separator = if options.reformed, do: "-", else: " "
         prefix <> separator <> "cents"
       else
@@ -217,36 +211,27 @@ defmodule FrenchNumbers do
     thousands = div(n, 1000)
     rest = rem(n, 1000)
 
-    prefix =
-      if thousands > 1 do
-        thousands_str = basic(thousands, %{options | feminine: false}, false)
-        thousands_str = unpluralize(thousands_str)
-        separator = if options.reformed, do: "-", else: " "
-        thousands_str <> separator <> "mille"
-      else
-        "mille"
-      end
-
+    prefix = build_thousands_prefix(thousands, options)
     complete(prefix, rest, false, options)
+  end
+
+  defp build_thousands_prefix(1, _options), do: "mille"
+
+  defp build_thousands_prefix(thousands, options) do
+    thousands_str = convert(thousands, %{options | feminine: false})
+    thousands_str = unpluralize(thousands_str)
+    separator = if options.reformed, do: "-", else: " "
+    thousands_str <> separator <> "mille"
   end
 
   defp over_1000000(n, options) do
     small = rem(n, 1_000_000)
     num = div(n, 1_000_000)
 
-    base =
-      if small == 0 do
-        nil
-      else
-        basic(small, options, false)
-      end
-
+    base = if small == 0, do: nil, else: convert(small, options)
     {result, _log1000} = build_large_number(num, base, options, 0)
 
-    case result do
-      nil -> Integer.to_string(n)
-      str -> str
-    end
+    result || Integer.to_string(n)
   end
 
   defp build_large_number(0, base, _options, log1000), do: {base, log1000}
@@ -255,31 +240,31 @@ defmodule FrenchNumbers do
     prefix = rem(num, 1000)
     rest = div(num, 1000)
 
-    base =
-      if prefix > 0 do
-        str = basic(prefix, %{options | feminine: false}, false)
-        separator = if options.reformed, do: "-", else: " "
+    new_base = build_next_base(prefix, base, options, log1000)
 
-        case add_unit_for(str <> separator, prefix, log1000) do
-          nil ->
-            nil
-
-          unit_str ->
-            if base do
-              separator = if options.reformed, do: "-", else: " "
-              unit_str <> separator <> base
-            else
-              unit_str
-            end
-        end
-      else
-        base
-      end
-
-    if base == nil do
-      {nil, log1000}
+    if new_base do
+      build_large_number(rest, new_base, options, log1000 + 1)
     else
-      build_large_number(rest, base, options, log1000 + 1)
+      {nil, log1000}
     end
+  end
+
+  defp build_next_base(0, base, _options, _log1000), do: base
+
+  defp build_next_base(prefix, base, options, log1000) do
+    str = convert(prefix, %{options | feminine: false})
+    separator = if options.reformed, do: "-", else: " "
+
+    case add_unit_for(str <> separator, prefix, log1000) do
+      nil -> nil
+      unit_str -> append_base(unit_str, base, options)
+    end
+  end
+
+  defp append_base(unit_str, nil, _options), do: unit_str
+
+  defp append_base(unit_str, base, options) do
+    separator = if options.reformed, do: "-", else: " "
+    unit_str <> separator <> base
   end
 end
