@@ -229,12 +229,12 @@ defmodule FrenchNumbers do
     num = div(n, 1_000_000)
 
     base = if small == 0, do: nil, else: convert(small, options)
-    {result, _log1000} = build_large_number(num, base, options, 0)
+    result = build_large_number(num, base, options, 0)
 
     result || Integer.to_string(n)
   end
 
-  defp build_large_number(0, base, _options, log1000), do: {base, log1000}
+  defp build_large_number(0, base, _options, _log1000), do: base
 
   defp build_large_number(num, base, options, log1000) do
     prefix = rem(num, 1000)
@@ -244,8 +244,6 @@ defmodule FrenchNumbers do
 
     if new_base do
       build_large_number(rest, new_base, options, log1000 + 1)
-    else
-      {nil, log1000}
     end
   end
 
