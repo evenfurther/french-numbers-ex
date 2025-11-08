@@ -136,13 +136,14 @@ defmodule FrenchNumbers do
   defp add_unit_for(str, prefix_count, log1000) do
     prefix_idx = div(log1000, 2)
 
-    with true <- prefix_idx < length(@prefixes),
-         prefix <- Enum.at(@prefixes, prefix_idx) do
-      suffix = if rem(log1000, 2) == 0, do: "illion", else: "illiard"
-      plural = if prefix_count > 1, do: "s", else: ""
-      str <> prefix <> suffix <> plural
-    else
-      _ -> nil
+    case Enum.fetch(@prefixes, prefix_idx) do
+      {:ok, prefix} ->
+        suffix = if rem(log1000, 2) == 0, do: "illion", else: "illiard"
+        plural = if prefix_count > 1, do: "s", else: ""
+        str <> prefix <> suffix <> plural
+
+      :error ->
+        nil
     end
   end
 
